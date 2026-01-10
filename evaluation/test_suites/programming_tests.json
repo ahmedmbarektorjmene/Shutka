@@ -1,0 +1,130 @@
+[
+  {
+    "id": "prog_001",
+    "prompt": "Write a TypeScript function `fizzBuzz(n: number): string[]` that returns the FizzBuzz sequence up to n.",
+    "test_cases": [
+      {
+        "input": "fizzBuzz(5)",
+        "expected": "[\"1\",\"2\",\"Fizz\",\"4\",\"Buzz\"]",
+        "description": "Basic FizzBuzz test"
+      },
+      {
+        "input": "fizzBuzz(15)",
+        "expected": "[\"1\",\"2\",\"Fizz\",\"4\",\"Buzz\",\"Fizz\",\"7\",\"8\",\"Fizz\",\"Buzz\",\"11\",\"Fizz\",\"13\",\"14\",\"FizzBuzz\"]",
+        "description": "Extended FizzBuzz test"
+      }
+    ]
+  },
+  {
+    "id": "prog_002",
+    "prompt": "Write a TypeScript function `reverseString(s: string): string` that reverses a string.",
+    "test_cases": [
+      {
+        "input": "reverseString('hello')",
+        "expected": "'olleh'",
+        "description": "Basic string reversal"
+      },
+      {
+        "input": "reverseString('')",
+        "expected": "''",
+        "description": "Empty string"
+      }
+    ]
+  },
+  {
+    "id": "prog_003",
+    "prompt": "Write a TypeScript function `isPalindrome(s: string): boolean` that checks if a string is a palindrome.",
+    "test_cases": [
+      {
+        "input": "isPalindrome('racecar')",
+        "expected": "true",
+        "description": "Valid palindrome"
+      },
+      {
+        "input": "isPalindrome('hello')",
+        "expected": "false",
+        "description": "Not a palindrome"
+      }
+    ]
+  },
+  {
+    "id": "prog_004",
+    "prompt": "Write a TypeScript function `factorial(n: number): number` that calculates the factorial of n.",
+    "test_cases": [
+      {
+        "input": "factorial(5)",
+        "expected": "120",
+        "description": "Factorial of 5"
+      },
+      {
+        "input": "factorial(0)",
+        "expected": "1",
+        "description": "Factorial of 0"
+      }
+    ]
+  },
+  {
+    "id": "prog_005",
+    "prompt": "Write a TypeScript function `fibonacci(n: number): number` that returns the nth Fibonacci number.",
+    "test_cases": [
+      {
+        "input": "fibonacci(7)",
+        "expected": "13",
+        "description": "7th Fibonacci number"
+      },
+      {
+        "input": "fibonacci(0)",
+        "expected": "0",
+        "description": "0th Fibonacci number"
+      }
+    ]
+  },
+  {
+    "id": "prog_006",
+    "prompt": "Write a TypeScript function `maxArray(arr: number[]): number` that returns the maximum value in an array.",
+    "test_cases": [
+      {
+        "input": "maxArray([1, 5, 3, 9, 2])",
+        "expected": "9",
+        "description": "Find maximum"
+      },
+      {
+        "input": "maxArray([-10, -5, -1])",
+        "expected": "-1",
+        "description": "Maximum with negatives"
+      }
+    ]
+  },
+  {
+    "id": "prog_007",
+    "prompt": "Write a TypeScript function `countWords(s: string): number` that counts the number of words in a string.",
+    "test_cases": [
+      {
+        "input": "countWords('hello world')",
+        "expected": "2",
+        "description": "Two words"
+      },
+      {
+        "input": "countWords('')",
+        "expected": "0",
+        "description": "Empty string"
+      }
+    ]
+  },
+  {
+    "id": "prog_008",
+    "prompt": "Write a TypeScript function `isPrime(n: number): boolean` that checks if a number is prime.",
+    "test_cases": [
+      {
+        "input": "isPrime(7)",
+        "expected": "true",
+        "description": "Prime number"
+      },
+      {
+        "input": "isPrime(10)",
+        "expected": "false",
+        "description": "Composite number"
+      }
+    ]
+  }
+]
