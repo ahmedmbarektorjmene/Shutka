@@ -7,7 +7,7 @@ This guide shows how to set up and run the training on a Kaggle Notebook (Single
 In a Kaggle cell:
 
 ```python
-!pip install faiss-gpu datasets tiktoken torch numpy tqdm
+!pip install faiss-gpu datasets tiktoken torch numpy tqdm bitsandbytes
 ```
 
 ## 2. Directory Structure
@@ -15,19 +15,30 @@ In a Kaggle cell:
 ```bash
 /kaggle/working/
   ├── models/
-  │   └── shutka.py
+  │   └── shutka.py             # Core Architecture
   ├── training/
-  │   ├── trainer.py
-  │   ├── typescript_loader.py
+  │   ├── __init__.py
+  │   ├── trainer.py            # Phase-aware trainer
+  │   ├── train_typescript.py   # PHASE 1 Script
+  │   ├── train_real_data.py    # PHASE 2 Script
+  │   ├── typescript_loader.py  # Data loader
   │   └── real_instruction_loader.py
-  ├── config.py
-  ├── train_typescript.py
-  └── train_real_data.py
+  ├── evaluation/
+  │   ├── __init__.py
+  │   ├── eval.py               # Main Eval script
+  │   ├── evaluator.py
+  │   ├── test_syntax.py
+  │   ├── test_programming.py
+  │   └── test_algorithmic.py
+  ├── config.py                 # Unified Config
+  ├── evaluate_shutka.py        # Wrapper script
+  ├── KAGGLE_GUIDE.md
+  └── README.md
 ```
 
 ## 3. Launch Phase 1: TypeScript Syntax
 
-Tearning the grammar of code (interfaces, types, classes).
+Learning the grammar of code (interfaces, types, classes).
 
 ```python
 !python training/train_typescript.py \
@@ -51,17 +62,44 @@ Training the "Intent" (Natural Language -> Code).
     --checkpoint_dir /kaggle/working/checkpoints_agent
 ```
 
-## 5. Persistence
+## 6. Dynamic Memory Hygiene
 
-Kaggle only saves files in `/kaggle/working`.
-The FAISS memory bank will be saved to `memory_bank/` in that directory.
+Shutka V2 uses a mutable FAISS bank. Proper memory management ensures your coding agent remains accurate.
 
-### Tip: Download results
+### When to Update the Bank
+
+- **Library Updates**: If a major TS library (e.g., React, Zod) changes syntax, delete old snippets and add new ones.
+- **Refactoring**: When local codebases change significantly, remove stale latent representations.
+- **Improved Encoder**: If you train a new checkpoint with a different architecture, you **must** re-encode and re-add all snippets (latent alignment).
+
+### Memory Management Workflow
 
 ```python
-import os
+from models.shutka import UltraEfficientTextJEPA
+
+model = UltraEfficientTextJEPA()
+bank = model.predictor.memory_bank
+
+# Add (Appends to FAISS + Metadata)
+ids = bank.add_memory(embeddings, ["interface User { id: string }"])
+
+# Delete (Remove by ID)
+bank.delete_memory(ids)
+
+# Update (Delete + Add workflow)
+bank.update_memory(old_id, new_embeddings, ["interface User { id: number }"])
+```
+
+## 7. Persistence and Scale
+
+- **MMAP mode**: Shutka uses `IO_FLAG_MMAP`, meaning FAISS indices are mapped to disk. You don't need 32GB of RAM to search a 32GB index.
+- **Auto-Save**: The `bank.auto_save` feature automatically flushes changes to `/kaggle/working/memory_bank` after every add/delete.
+
+### Tip: Kaggle Output Persistence
+
+Remember, `/kaggle/working` is wiped after 12 hours of inactivity. Always download your `memory_bank/` directory using the ZIP utility at the end of your session.
+
+```python
 import shutil
-shutil.make_archive('output', 'zip', '/kaggle/working')
-from IPython.display import FileLink
-FileLink('output.zip')
+shutil.make_archive('shutka_v2_bundle', 'zip', '/kaggle/working')
 ```

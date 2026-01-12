@@ -26,9 +26,6 @@ def main():
 
     args = parser.parse_args()
 
-    print(f"{'='*60}")
-    print("Evaluating Shutka (VL-JEPA)")
-    print(f"{'='*60}")
 
     config = EvaluationConfig()
     config.checkpoint_path = args.checkpoint

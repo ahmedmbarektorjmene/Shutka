@@ -67,8 +67,6 @@ def main():
     print("  ✓ GitHub commits: commit message → code change")
     print("  ✓ JSDoc/TSDoc: documentation → implementation")
     print("  ✓ Stack Overflow: real Q&A (filtered for JS/TS)")
-    print("\n  ✗ NO hardcoded examples")
-    print("  ✗ NO LLM-generated data")
     
     # For streaming datasets, we need to handle them differently
     # We'll buffer samples for training epochs

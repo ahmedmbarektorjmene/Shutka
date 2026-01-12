@@ -368,7 +368,8 @@ class FAISSMemoryBank:
 
         os.makedirs(base_dir, exist_ok=True)
         self.indices = []
-        self.shard_memories = [] # Metadata still in RAM (json is light)
+        self.shard_memories = [] # Now a dict {id: text} for fast delete
+        self.next_id = 0 # Global ID counter
 
         # Load shards
         for shard_id in range(shards):
@@ -398,6 +399,9 @@ class FAISSMemoryBank:
                     faiss.normalize_L2(train_data)
                     index.train(train_data)
                     index.nprobe = 10
+                    
+                    # Wrap in IDMap to support specific ID management
+                    index = faiss.IndexIDMap(index)
                     self.indices.append(index)
                     
             except Exception as e:
@@ -409,17 +413,27 @@ class FAISSMemoryBank:
             if os.path.exists(memories_path):
                 try:
                     with open(memories_path, 'r', encoding='utf-8') as f:
-                        self.shard_memories.append(json.load(f))
+                        data = json.load(f)
+                        # Convert list back to dict if it was a list (backward compatibility)
+                        if isinstance(data, list):
+                            self.shard_memories.append({i: text for i, text in enumerate(data)})
+                        else:
+                            # Ensure keys are integers
+                            self.shard_memories.append({int(k): v for k, v in data.items()})
                 except:
-                    self.shard_memories.append([])
+                    self.shard_memories.append({})
             else:
-                self.shard_memories.append([])
+                self.shard_memories.append({})
+            
+            # Update next_id based on existing IDs
+            if self.shard_memories[-1]:
+                self.next_id = max(self.next_id, max(self.shard_memories[-1].keys()) + 1)
         
-        print(f"DEBUG: FAISSMemoryBank initialized with {len(self.indices)} shards. Auto-save: {self.auto_save}")
 
     def add_memory(self, embeddings, texts):
+        """Add new embeddings and return their IDs"""
         if not self.indices: 
-            return
+            return []
         
         if isinstance(embeddings, torch.Tensor):
             embeddings = embeddings.detach().cpu().numpy()
@@ -428,14 +442,53 @@ class FAISSMemoryBank:
         faiss.normalize_L2(embeddings.astype("float32"))
         embeddings = embeddings.astype("float32")
         
-        # Round-robin distribution
+        assigned_ids = []
         for i, (emb, text) in enumerate(zip(embeddings, texts)):
             shard_id = i % self.shards
-            self.indices[shard_id].add(emb.reshape(1, -1))
-            self.shard_memories[shard_id].append(text)
+            current_id = self.next_id
+            
+            # add_with_ids allows us to specify the ID
+            ids_to_add = np.array([current_id]).astype('int64')
+            self.indices[shard_id].add_with_ids(emb.reshape(1, -1), ids_to_add)
+            self.shard_memories[shard_id][current_id] = text
+            
+            assigned_ids.append(current_id)
+            self.next_id += 1
             
         if self.auto_save:
             self.save()
+        return assigned_ids
+
+    def delete_memory(self, ids):
+        """Delete memories by their IDs"""
+        if not self.indices: return
+        
+        if isinstance(ids, int):
+            ids = [ids]
+            
+        # Convert to numpy for FAISS selector
+        ids_np = np.array(ids).astype('int64')
+        selector = faiss.IDSelectorArray(ids_np)
+        
+        for shard_id in range(self.shards):
+            # Remove from FAISS index
+            self.indices[shard_id].remove_ids(selector)
+            
+            # Remove from metadata dict
+            for mid in ids:
+                if mid in self.shard_memories[shard_id]:
+                    del self.shard_memories[shard_id][mid]
+                    
+        if self.auto_save:
+            self.save()
+
+    def update_memory(self, mem_id, new_embedding, new_text):
+        """Update a memory by deleting and re-adding"""
+        self.delete_memory(mem_id)
+        # We use a custom add here to keep the SAME ID if desired, 
+        # but the user suggested delete + add workflow which changes ID.
+        # Let's just follow the delete + add workflow for simplicity.
+        return self.add_memory(new_embedding, new_text)
 
     def search(self, query_embeddings, k=5):
         if not self.indices: return None, None, []
@@ -455,7 +508,7 @@ class FAISSMemoryBank:
                 
                 for b in range(len(query_embeddings)):
                     for d, i in zip(dist[b], idx[b]):
-                        if i != -1 and i < len(self.shard_memories[shard_id]):
+                        if i != -1 and i in self.shard_memories[shard_id]:
                             all_results.append({
                                 'distance': d,
                                 'text': self.shard_memories[shard_id][i],
@@ -479,14 +532,11 @@ class FAISSMemoryBank:
         return np.array(batch_distances), np.array(batch_indices), batch_texts
 
     def save(self):
-        print(f"DEBUG: Saving {len(self.indices)} shards to {self.base_dir}")
         # Save indices and memories
         for i, index in enumerate(self.indices):
-             print(f"DEBUG: Writing shard {i} with {index.ntotal} vectors...")
              faiss.write_index(index, os.path.join(self.base_dir, f"shard_{i}.index"))
              with open(os.path.join(self.base_dir, f"shard_{i}.memories"), 'w', encoding='utf-8') as f:
                  json.dump(self.shard_memories[i], f)
-             print(f"DEBUG: Shard {i} saved.")
 
 
 # ============================================================================
