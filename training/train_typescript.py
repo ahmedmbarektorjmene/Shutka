@@ -22,9 +22,6 @@ from models.shutka import UltraEfficientTextJEPA
 from training.typescript_loader import create_typescript_dataloader
 from training.trainer import Trainer
 from config import TrainingConfig
-from huggingface_hub import login
-
-login(token="things")
 
 
 def parse_args():
