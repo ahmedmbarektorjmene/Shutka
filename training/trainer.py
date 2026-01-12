@@ -16,6 +16,12 @@ from tqdm import tqdm
 from typing import Optional, Dict
 import json
 
+try:
+    import bitsandbytes as bnb
+    BITSANDBYTES_AVAILABLE = True
+except ImportError:
+    BITSANDBYTES_AVAILABLE = False
+
 # Check for modern GPU features
 CUDA_AVAILABLE = torch.cuda.is_available()
 BF16_SUPPORTED = CUDA_AVAILABLE and torch.cuda.is_bf16_supported()
@@ -97,13 +103,21 @@ class Trainer:
             self.autocast_dtype = None
             print("  Mixed precision: DISABLED")
         
-        # Optimizer
-        self.optimizer = AdamW(
-            self.model.parameters(),
-            lr=config.learning_rate,
-            weight_decay=config.weight_decay,
-            fused=False  # Disabled: bitsandbytes mutations cause dtype mismatch for fused kernels on T4
-        )
+        # Optimizer: Official bitsandbytes 8-bit optimizer where possible
+        if BITSANDBYTES_AVAILABLE and CUDA_AVAILABLE:
+            print("  8-bit Optimizer: ENABLED (bitsandbytes)")
+            self.optimizer = bnb.optim.AdamW8bit(
+                self.model.parameters(),
+                lr=config.learning_rate,
+                weight_decay=config.weight_decay
+            )
+        else:
+            self.optimizer = AdamW(
+                self.model.parameters(),
+                lr=config.learning_rate,
+                weight_decay=config.weight_decay,
+                fused=False # Fallback: avoid fused kernel compatibility issues
+            )
         
         # Learning rate scheduler
         total_steps = len(train_loader) * config.num_epochs
@@ -215,12 +229,8 @@ class Trainer:
                 self.scaler.scale(loss).backward()
                 
                 # SAFETY: GradScaler.unscale_ fails if it finds FP16 gradients.
-                # Some layers (like bitsandbytes) might mutate parameters to FP16.
-                # We cast BOTH the parameter and the gradient back to FP32 to ensure
-                # consistency for the optimizer and the scaler.
                 for p in self.model.parameters():
-                    if p.grad is not None and (p.grad.dtype == torch.float16 or p.dtype == torch.float16):
-                         p.data = p.data.to(torch.float32)
+                    if p.grad is not None and p.grad.dtype == torch.float16:
                          p.grad.data = p.grad.data.to(torch.float32)
                 
                 # Gradient clipping with scaler
