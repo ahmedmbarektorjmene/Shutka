@@ -37,8 +37,7 @@ class RMSNorm(nn.Module):
         return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
 
     def forward(self, x):
-        output = self._norm(x.float()).type_as(x)
-        return output * self.weight
+        return self._norm(x.float()).type_as(x) * self.weight.type_as(x)
 
 class SwiGLU(nn.Module):
     """Swish-Gated Linear Unit activation"""
@@ -60,14 +59,14 @@ def apply_rope(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor):
     
     # cos/sin shape: (seq_len, D/2)
     # Target shape for broadcast: (1, N, 1, D)
-    cos = cos[:N].to(device=x.device, dtype=x.dtype).repeat_interleave(2, dim=-1).view(1, N, 1, D)
-    sin = sin[:N].to(device=x.device, dtype=x.dtype).repeat_interleave(2, dim=-1).view(1, N, 1, D)
+    cos_slice = cos[:N].repeat_interleave(2, dim=-1).view(1, N, 1, D)
+    sin_slice = sin[:N].repeat_interleave(2, dim=-1).view(1, N, 1, D)
     
     # Rotation logic: [x0, x1, x2, x3] -> [-x1, x0, -x3, x2] for sin multiplication
     x_half = x.reshape(B, N, H, D // 2, 2)
     x_rotated = torch.stack([-x_half[..., 1], x_half[..., 0]], dim=-1).reshape(B, N, H, D)
     
-    return x * cos + x_rotated * sin
+    return x * cos_slice + x_rotated * sin_slice
 
 
 # ============================================================================
@@ -177,7 +176,8 @@ class QuantizedLinear(nn.Module):
             self.linear = BitLinear(in_features, out_features, bias=bias)
 
     def forward(self, x):
-
+        if hasattr(self.linear, 'weight'):
+            x = x.to(self.linear.weight.dtype)
         return self.linear(x)
 
 
@@ -556,7 +556,9 @@ class EfficientXEncoder(nn.Module):
             [EfficientTransformerBlock(d_model, num_heads) for _ in range(depth)]
         )
         self.norm = RMSNorm(d_model)
-        self.cos, self.sin = precompute_rope_freqs(d_model // num_heads, max_seq_len)
+        cos, sin = precompute_rope_freqs(d_model // num_heads, max_seq_len)
+        self.register_buffer("cos", cos, persistent=False)
+        self.register_buffer("sin", sin, persistent=False)
 
     def forward(self, x, attention_mask=None):
         B, L = x.shape
@@ -575,7 +577,9 @@ class EfficientYEncoder(nn.Module):
             [EfficientTransformerBlock(d_model, num_heads) for _ in range(depth)]
         )
         self.norm = RMSNorm(d_model)
-        self.cos, self.sin = precompute_rope_freqs(d_model // num_heads, max_seq_len)
+        cos, sin = precompute_rope_freqs(d_model // num_heads, max_seq_len)
+        self.register_buffer("cos", cos, persistent=False)
+        self.register_buffer("sin", sin, persistent=False)
 
     def forward(self, x, attention_mask=None):
         B, L = x.shape
@@ -598,18 +602,17 @@ class EfficientPredictor(nn.Module):
         )
         self.norm = RMSNorm(predictor_dim)
         self.output_proj = QuantizedLinear(predictor_dim, output_dim)
-        self.cos, self.sin = precompute_rope_freqs(predictor_dim // num_heads, max_seq_len)
+        cos, sin = precompute_rope_freqs(predictor_dim // num_heads, max_seq_len)
+        self.register_buffer("cos", cos, persistent=False)
+        self.register_buffer("sin", sin, persistent=False)
 
-    def forward(self, source_tokens, query_tokens, source_mask=None, query_mask=None):
-        source_emb = self.source_proj(source_tokens)
-        query_emb = self.query_proj(query_tokens)
-        
-        # RAG Logic
+    @torch.compiler.disable
+    def _get_rag_embeddings(self, source_emb, source_tokens_device):
+        """Isolated RAG logic to prevent torch.compile graph breaks"""
         rag_context = []
         rag_negatives = []
         
         if self.use_rag and hasattr(self, 'memory_bank') and self.memory_bank.indices:
-            # Query using mean of source
             query_vec = source_emb.mean(dim=1)
             d, i, texts = self.memory_bank.search(query_vec, k=2)
             
@@ -621,19 +624,18 @@ class EfficientPredictor(nn.Module):
                     try:
                         if len(texts[b]) > 0:
                             toks = json.loads(texts[b][0]) 
-                            batch_rag_tokens.append(torch.tensor(toks, device=source_tokens.device))
+                            batch_rag_tokens.append(torch.tensor(toks, device=source_tokens_device))
                         else:
-                             batch_rag_tokens.append(torch.zeros(1, dtype=torch.long, device=source_tokens.device))
+                             batch_rag_tokens.append(torch.zeros(1, dtype=torch.long, device=source_tokens_device))
                         
                         if len(texts[b]) > 1:
                             toks = json.loads(texts[b][1])
-                            batch_neg_tokens.append(torch.tensor(toks, device=source_tokens.device))
+                            batch_neg_tokens.append(torch.tensor(toks, device=source_tokens_device))
                         else:
-                            # Consistent batch size: add dummy if negative missing
-                            batch_neg_tokens.append(torch.zeros(1, dtype=torch.long, device=source_tokens.device))
+                            batch_neg_tokens.append(torch.zeros(1, dtype=torch.long, device=source_tokens_device))
                     except:
-                        batch_rag_tokens.append(torch.zeros(1, dtype=torch.long, device=source_tokens.device))
-                        batch_neg_tokens.append(torch.zeros(1, dtype=torch.long, device=source_tokens.device))
+                        batch_rag_tokens.append(torch.zeros(1, dtype=torch.long, device=source_tokens_device))
+                        batch_neg_tokens.append(torch.zeros(1, dtype=torch.long, device=source_tokens_device))
 
                 max_len = max([t.size(0) for t in batch_rag_tokens])
                 padded_rag = torch.stack([F.pad(t, (0, max_len - t.size(0))) for t in batch_rag_tokens])
@@ -643,6 +645,15 @@ class EfficientPredictor(nn.Module):
                 if batch_neg_tokens:
                     max_neg_len = max([t.size(0) for t in batch_neg_tokens])
                     rag_negatives = torch.stack([F.pad(t, (0, max_neg_len - t.size(0))) for t in batch_neg_tokens])
+                    
+        return rag_context, rag_negatives
+
+    def forward(self, source_tokens, query_tokens, source_mask=None, query_mask=None):
+        source_emb = self.source_proj(source_tokens)
+        query_emb = self.query_proj(query_tokens)
+        
+        # Isolated RAG Logic
+        rag_context, rag_negatives = self._get_rag_embeddings(source_emb, source_tokens.device)
 
         # Concat context
         inputs = [source_emb, query_emb] + rag_context
