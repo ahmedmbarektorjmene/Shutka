@@ -175,6 +175,7 @@ class QuantizedLinear(nn.Module):
 
             self.linear = BitLinear(in_features, out_features, bias=bias)
 
+    @torch.compiler.disable
     def forward(self, x):
         # bitsandbytes 8-bit layers require half-precision inputs on GPU.
         # We explicitly cast to float16 to avoid MatMul8bitLt casting warnings.
