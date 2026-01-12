@@ -533,7 +533,7 @@ class FAISSMemoryBank:
             batch_distances.append([r['distance'] for r in b_results])
             batch_indices.append([0 for _ in b_results]) # Indices not needed for RAG
             
-        return np.array(batch_distances), np.array(batch_indices), batch_texts
+        return batch_distances, batch_indices, batch_texts
 
     def save(self):
         # Save indices and memories
