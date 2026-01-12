@@ -382,6 +382,16 @@ class FAISSMemoryBank:
                 if os.path.exists(index_path):
                     # MMAP Loading: Critical for huge files
                     index = faiss.read_index(index_path, faiss.IO_FLAG_MMAP)
+                    
+                    # FAISS OnDiskInvertedLists are read-only by default when mmapped.
+                    # We must explicitly set read_only=False to allow incremental updates.
+                    try:
+                        ivf_index = faiss.extract_index_ivf(index)
+                        if ivf_index:
+                            ivf_index.invlists.read_only = False
+                    except Exception as e:
+                        print(f"  Warning: Could not make shard {shard_id} writable: {e}")
+                    
                     self.indices.append(index)
                 else:
                     # Create coarse quantizer for IVF

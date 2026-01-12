@@ -52,7 +52,9 @@ class VLEPAEvaluator:
             if not hasattr(self.model, 'memory_bank') or self.model.memory_bank is None:
                 print("Creating FAISS memory bank for evaluation...")
                 from models.shutka import FAISSMemoryBank
-                self.model.memory_bank = FAISSMemoryBank(dimension=512, base_dir="memory_bank", shards=4)
+                # Use predictor dimension from model configuration
+                dim = self.model.predictor.source_proj.out_features
+                self.model.memory_bank = FAISSMemoryBank(dimension=dim, base_dir="memory_bank", shards=4)
 
                 # Populate with some test memories for evaluation
                 self._populate_test_memories()
