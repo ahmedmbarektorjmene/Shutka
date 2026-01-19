@@ -98,6 +98,7 @@ Training the "Intent" (Natural Language -> Code).
 ```
 
 **Enhanced Architecture Benefits**:
+
 - **40% less memory** usage with gradient checkpointing
 - **2-3x faster** on CPU with BitNet quantization
 - **Adaptive learning** with Titans Memory (learns from mistakes)
@@ -165,6 +166,7 @@ bank.update_memory(old_id, new_embeddings, ["interface User { id: number }"])
 Remember, `/kaggle/working` is wiped after 12 hours of inactivity. Always download your `shutka_v2_bundle.zip` at the end of your session.
 
 **What to save**:
+
 - `checkpoints/best_model.pt` - Model weights
 - `checkpoints/best_model_titans.pt` - Titans Memory state
 - `memory_bank/` - FAISS indices and metadata

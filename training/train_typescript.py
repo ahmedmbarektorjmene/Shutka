@@ -46,14 +46,25 @@ def parse_args():
     )
 
     # Model (T4-optimized: smaller, faster)
-    parser.add_argument("--source_dim", type=int, default=320, help="Model dimension (320 for T4)")
+    parser.add_argument(
+        "--source_dim", type=int, default=320, help="Model dimension (320 for T4)"
+    )
     parser.add_argument("--target_dim", type=int, default=320)
     parser.add_argument("--predictor_dim", type=int, default=320)
-    parser.add_argument("--source_depth", type=int, default=6, help="Encoder layers (6 for T4)")
-    parser.add_argument("--target_depth", type=int, default=3, help="Target layers (3 for T4)")
-    parser.add_argument("--predictor_depth", type=int, default=3, help="Predictor layers (3 for T4)")
     parser.add_argument(
-        "--max_source_len", type=int, default=1024, help="Max source context (1024 for T4)"
+        "--source_depth", type=int, default=6, help="Encoder layers (6 for T4)"
+    )
+    parser.add_argument(
+        "--target_depth", type=int, default=3, help="Target layers (3 for T4)"
+    )
+    parser.add_argument(
+        "--predictor_depth", type=int, default=3, help="Predictor layers (3 for T4)"
+    )
+    parser.add_argument(
+        "--max_source_len",
+        type=int,
+        default=1024,
+        help="Max source context (1024 for T4)",
     )
     parser.add_argument(
         "--max_target_len", type=int, default=256, help="Max target length (256 for T4)"
@@ -61,27 +72,40 @@ def parse_args():
 
     # Training (T4-optimized)
     parser.add_argument("--epochs", type=int, default=3, help="Number of epochs")
-    parser.add_argument("--batch_size", type=int, default=4, help="Batch size per GPU (4 for T4)")
-    parser.add_argument("--gradient_accumulation_steps", type=int, default=4, 
-                       help="Accumulate gradients (effective batch = 4*4=16)")
-    parser.add_argument("--learning_rate", type=float, default=3e-4, help="Learning rate")
+    parser.add_argument(
+        "--batch_size", type=int, default=4, help="Batch size per GPU (4 for T4)"
+    )
+    parser.add_argument(
+        "--gradient_accumulation_steps",
+        type=int,
+        default=4,
+        help="Accumulate gradients (effective batch = 4*4=16)",
+    )
+    parser.add_argument(
+        "--learning_rate", type=float, default=3e-4, help="Learning rate"
+    )
     parser.add_argument(
         "--use_rag", action="store_true", default=False, help="Disable RAG for speed"
     )
-    parser.add_argument("--optimizer", type=str, default="galore", 
-                       choices=["adamw", "galore"], help="Optimizer (galore for memory efficiency)")
 
     # Optimization (T4-specific)
     parser.add_argument(
-        "--no_compile", action="store_true", help="Disable torch.compile (faster startup)"
+        "--no_compile",
+        action="store_true",
+        help="Disable torch.compile (faster startup)",
     )
     parser.add_argument(
-        "--mixed_precision", type=str, default="fp16", 
-        choices=["no", "fp16", "bf16"], help="Mixed precision (fp16 for T4)"
+        "--mixed_precision",
+        type=str,
+        default="fp16",
+        choices=["no", "fp16", "bf16"],
+        help="Mixed precision (fp16 for T4)",
     )
     parser.add_argument(
-        "--gradient_checkpointing", action="store_true", default=True,
-        help="Enable gradient checkpointing (saves memory)"
+        "--gradient_checkpointing",
+        action="store_true",
+        default=True,
+        help="Enable gradient checkpointing (saves memory)",
     )
 
     # Checkpointing (faster saves)
@@ -89,8 +113,12 @@ def parse_args():
     parser.add_argument(
         "--resume", type=str, default=None, help="Path to checkpoint to resume from"
     )
-    parser.add_argument("--save_every", type=int, default=1000, help="Save every N steps")
-    parser.add_argument("--eval_every", type=int, default=500, help="Eval every N steps")
+    parser.add_argument(
+        "--save_every", type=int, default=1000, help="Save every N steps"
+    )
+    parser.add_argument(
+        "--eval_every", type=int, default=500, help="Eval every N steps"
+    )
     parser.add_argument("--log_every", type=int, default=50, help="Log every N steps")
 
     return parser.parse_args()
@@ -98,20 +126,25 @@ def parse_args():
 
 def main():
     args = parse_args()
-    
+
     # Validate batch size for InfoNCE loss
     if args.batch_size < 2:
-        print("⚠️  Warning: InfoNCE loss requires batch_size >= 2 for contrastive learning.")
+        print(
+            "⚠️  Warning: InfoNCE loss requires batch_size >= 2 for contrastive learning."
+        )
         print("   Setting batch_size to 2 (minimum).")
         args.batch_size = 2
 
     print("=" * 60)
     print("SHUTKA Training - T4 GPU Optimized")
     print("=" * 60)
-    print(f"Model: {args.source_dim}d, {args.source_depth}+{args.target_depth}+{args.predictor_depth} layers")
-    print(f"Batch: {args.batch_size} × {args.gradient_accumulation_steps} = {args.batch_size * args.gradient_accumulation_steps} effective")
+    print(
+        f"Model: {args.source_dim}d, {args.source_depth}+{args.target_depth}+{args.predictor_depth} layers"
+    )
+    print(
+        f"Batch: {args.batch_size} × {args.gradient_accumulation_steps} = {args.batch_size * args.gradient_accumulation_steps} effective"
+    )
     print(f"Precision: {args.mixed_precision}")
-    print(f"Optimizer: {args.optimizer}")
 
     # Parse languages
     languages = [lang.strip() for lang in args.languages.split(",")]
@@ -161,14 +194,13 @@ def main():
     config.num_epochs = args.epochs
     config.batch_size = args.batch_size
     config.learning_rate = args.learning_rate
-    config.optimizer = args.optimizer
     config.checkpoint_dir = args.checkpoint_dir
     config.save_every = args.save_every
     config.eval_every = args.eval_every
     config.max_source_len = args.max_source_len
     config.max_target_len = args.max_target_len
     config.gradient_checkpointing = args.gradient_checkpointing
-    config.use_mixed_precision = (args.mixed_precision != "no")
+    config.use_mixed_precision = args.mixed_precision != "no"
 
     # Create trainer with T4 optimizations
     print("\n" + "-" * 40)

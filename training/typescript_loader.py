@@ -15,7 +15,10 @@ N_MIN = 3
 N_MAX = 8
 HASH_TABLE_SIZE = 500000
 
-def rolling_poly_hash(bytes_tensor: torch.Tensor, n: int, prime: int = 1000003) -> torch.Tensor:
+
+def rolling_poly_hash(
+    bytes_tensor: torch.Tensor, n: int, prime: int = 1000003
+) -> torch.Tensor:
     """
     Implements RollPolyHash from Equation 4 of the paper.
     Computes a hash for every window of size n.
@@ -24,23 +27,26 @@ def rolling_poly_hash(bytes_tensor: torch.Tensor, n: int, prime: int = 1000003) 
     hashes = torch.zeros(length, dtype=torch.long)
     if length < n:
         return hashes
-    
+
     current_hash = 0
     # Initial window
     for i in range(n):
         current_hash = (current_hash * 256 + bytes_tensor[i].item()) % HASH_TABLE_SIZE
-    
-    hashes[n-1] = current_hash
-    
+
+    hashes[n - 1] = current_hash
+
     # Rolling step
-    power = pow(256, n-1, HASH_TABLE_SIZE)
+    power = pow(256, n - 1, HASH_TABLE_SIZE)
     for i in range(n, length):
         # Remove leading byte, add trailing byte
-        current_hash = (current_hash - bytes_tensor[i-n].item() * power) % HASH_TABLE_SIZE
+        current_hash = (
+            current_hash - bytes_tensor[i - n].item() * power
+        ) % HASH_TABLE_SIZE
         current_hash = (current_hash * 256 + bytes_tensor[i].item()) % HASH_TABLE_SIZE
         hashes[i] = current_hash
-        
+
     return hashes
+
 
 def clean_code(code: str) -> str:
     """
@@ -73,27 +79,28 @@ class TypeScriptStreamingDataset(IterableDataset):
         length = byte_tensor.size(0)
         # Table of [SeqLen, 6] (for n=3, 4, 5, 6, 7, 8)
         all_hashes = torch.zeros((length, N_MAX - N_MIN + 1), dtype=torch.long)
-        
+
         for idx, n in enumerate(range(N_MIN, N_MAX + 1)):
             all_hashes[:, idx] = rolling_poly_hash(byte_tensor, n)
-            
+
         return all_hashes
 
     def _generate_patch_boundaries(self, byte_tensor: torch.Tensor) -> torch.Tensor:
-            """
-            Implements Entropy Patching (Section 2.3).
-            Note: Real BLT uses a 100M parameter Byte-LM. 
-            We use a space/punctuation proxy which the paper notes as a baseline (Section 2.2).
-            """
-            boundaries = torch.zeros_like(byte_tensor)
-            if len(boundaries) > 0: boundaries[0] = 1
-            
-            # Triggering on "High Entropy" structural characters
-            triggers = {10, 32, 46, 40, 123, 91, 59}
-            for i in range(1, len(byte_tensor)):
-                if byte_tensor[i].item() in triggers:
-                    boundaries[i] = 1
-            return boundaries
+        """
+        Implements Entropy Patching (Section 2.3).
+        Note: Real BLT uses a 100M parameter Byte-LM.
+        We use a space/punctuation proxy which the paper notes as a baseline (Section 2.2).
+        """
+        boundaries = torch.zeros_like(byte_tensor)
+        if len(boundaries) > 0:
+            boundaries[0] = 1
+
+        # Triggering on "High Entropy" structural characters
+        triggers = {10, 32, 46, 40, 123, 91, 59}
+        for i in range(1, len(byte_tensor)):
+            if byte_tensor[i].item() in triggers:
+                boundaries[i] = 1
+        return boundaries
 
     def __iter__(self) -> Iterator[Dict[str, torch.Tensor]]:
         count = 0
@@ -164,13 +171,18 @@ class TypeScriptStreamingDataset(IterableDataset):
 
                     # Clean and Yield
                     cleaned = clean_code(raw_code)
-                    byte_ids = torch.tensor(list(cleaned.encode("utf-8"))[:self.max_seq_len], dtype=torch.long)
+                    byte_ids = torch.tensor(
+                        list(cleaned.encode("utf-8"))[: self.max_seq_len],
+                        dtype=torch.long,
+                    )
                     if len(cleaned) > 40:
                         yield {
-                                "byte_ids": byte_ids,
-                                "patch_boundaries": self._generate_patch_boundaries(byte_ids),
-                                "hash_ngrams": self._get_hash_ngrams(byte_ids)
-                            }
+                            "byte_ids": byte_ids,
+                            "patch_boundaries": self._generate_patch_boundaries(
+                                byte_ids
+                            ),
+                            "hash_ngrams": self._get_hash_ngrams(byte_ids),
+                        }
                         count += 1
                         if count >= self.max_samples:
                             return
@@ -227,15 +239,21 @@ def create_typescript_dataloader(
         hashes = [item["hash_ngrams"] for item in batch]
 
         # Pad 1D sequences (Bytes and Boundaries)
-        byte_batch = torch.nn.utils.rnn.pad_sequence(byte_ids, batch_first=True, padding_value=0)
-        boundary_batch = torch.nn.utils.rnn.pad_sequence(boundaries, batch_first=True, padding_value=0)
-        
+        byte_batch = torch.nn.utils.rnn.pad_sequence(
+            byte_ids, batch_first=True, padding_value=0
+        )
+        boundary_batch = torch.nn.utils.rnn.pad_sequence(
+            boundaries, batch_first=True, padding_value=0
+        )
+
         # Pad 2D sequences (Hashes: Batch, Seq, NGrams)
         # Manual padding for the 3rd dimension complexity
         max_len = byte_batch.shape[1]
         n_gram_counts = hashes[0].shape[1]
-        padded_hashes = torch.zeros((len(batch), max_len, n_gram_counts), dtype=torch.long)
-        
+        padded_hashes = torch.zeros(
+            (len(batch), max_len, n_gram_counts), dtype=torch.long
+        )
+
         for i, h in enumerate(hashes):
             seq_len = h.shape[0]
             padded_hashes[i, :seq_len, :] = h
@@ -245,12 +263,12 @@ def create_typescript_dataloader(
             "source_patches": byte_batch,  # Use byte_ids as source patches
             "target_patches": byte_batch,  # Use same byte_ids as target patches (self-supervised)
             "patch_boundaries": boundary_batch,  # Keep boundaries for model
-            "hash_ngrams": padded_hashes  # Keep hash n-grams for model
+            "hash_ngrams": padded_hashes,  # Keep hash n-grams for model
         }
 
     # Check if CUDA is available for pin_memory optimization
     cuda_available = torch.cuda.is_available()
-    
+
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,

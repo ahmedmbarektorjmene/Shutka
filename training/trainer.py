@@ -9,17 +9,18 @@ Supports:
 
 import torch
 import torch.nn as nn
-from torch.optim import AdamW
+
 from torch.optim.lr_scheduler import CosineAnnealingLR
 import os
 import time
 from tqdm import tqdm
 from typing import Optional
 
-from models.shutka import GaLoreOptimizer
+from models.shutka import Optimizer
 
 try:
     import psutil
+
     PSUTIL_AVAILABLE = True
 except ImportError:
     PSUTIL_AVAILABLE = False
@@ -58,10 +59,12 @@ class Trainer:
         self.val_loader = val_loader
         self.config = config
         self.use_mixed_precision = use_mixed_precision and CUDA_AVAILABLE
-        self.gradient_accumulation_steps = gradient_accumulation_steps  # T4 optimization
-        
+        self.gradient_accumulation_steps = (
+            gradient_accumulation_steps  # T4 optimization
+        )
+
         # Validate configuration
-        if hasattr(config, 'validate'):
+        if hasattr(config, "validate"):
             is_valid, errors = config.validate()
             if not is_valid:
                 print("\n⚠️  Configuration validation warnings:")
@@ -84,26 +87,34 @@ class Trainer:
                 print("❌ ERROR: GPU not available!")
                 print("This model requires a GPU for training (T4, A100, etc.)")
                 print("Please run on Kaggle, Colab, or a machine with CUDA GPU.")
-                raise RuntimeError("GPU required for training. CPU training is not supported.")
+                raise RuntimeError(
+                    "GPU required for training. CPU training is not supported."
+                )
         else:
             self.device = device
-            if not CUDA_AVAILABLE and device.type == 'cuda':
+            if not CUDA_AVAILABLE and device.type == "cuda":
                 raise RuntimeError("CUDA device requested but CUDA is not available.")
 
         # Enable TF32 for tensor cores (RTX 30xx/40xx, A100, T4)
         if CUDA_AVAILABLE:
             torch.backends.cuda.matmul.allow_tf32 = True
             torch.backends.cudnn.allow_tf32 = True
-            torch.backends.cudnn.benchmark = True  # Auto-tune kernels for better performance
-            torch.backends.cudnn.deterministic = False  # Allow non-deterministic for speed
+            torch.backends.cudnn.benchmark = (
+                True  # Auto-tune kernels for better performance
+            )
+            torch.backends.cudnn.deterministic = (
+                False  # Allow non-deterministic for speed
+            )
             print("  TF32 tensor cores: ENABLED")
             print("  cuDNN auto-tuning: ENABLED")
-            
+
             # Set memory allocator settings for better GPU memory management
-            if hasattr(torch.cuda, 'memory'):
+            if hasattr(torch.cuda, "memory"):
                 torch.cuda.empty_cache()  # Clear cache before training
                 # Enable memory pool for faster allocations
-                torch.cuda.set_per_process_memory_fraction(0.95)  # Use up to 95% of GPU memory
+                torch.cuda.set_per_process_memory_fraction(
+                    0.95
+                )  # Use up to 95% of GPU memory
 
         self.model.to(self.device)
 
@@ -116,62 +127,27 @@ class Trainer:
             except Exception as e:
                 print(f"  torch.compile failed: {e}")
 
-        # Setup optimizer based on config
-        optimizer_type = getattr(config, 'optimizer', 'galore').lower()
-        
-        if optimizer_type == 'galore':
-            # GaLore: Low-rank gradient projection
-            galore_params = []
-            standard_params = []
+        # Setup optimizer
+        # Always use custom Optimizer as requested
+        galore_params = []
+        standard_params = []
 
-            for name, p in self.model.named_parameters():
-                if p.requires_grad:
-                    if p.dim() >= 2:
-                        galore_params.append(p)
-                    else:
-                        standard_params.append(p)
-            
-            self.optimizer = GaLoreOptimizer(
-                galore_params + standard_params,
-                lr=config.learning_rate,
-                rank=getattr(config, "rank", 128),
-                update_freq=getattr(config, "update_freq", 200),
-                cans_steps=getattr(config, "cans_steps", 5),
-            )
-            print(f"  Optimizer: GaLore (rank={getattr(config, 'rank', 128)})")
-        
-        elif optimizer_type == 'muon':
-            # Muon: Orthogonal updates (similar to GaLore but different approach)
-            # For now, use GaLore as Muon implementation
-            # In production, you'd implement a separate Muon optimizer
-            print("  Optimizer: Muon (using GaLore implementation)")
-            galore_params = []
-            standard_params = []
+        for name, p in self.model.named_parameters():
+            if p.requires_grad:
+                if p.dim() >= 2:
+                    galore_params.append(p)
+                else:
+                    standard_params.append(p)
 
-            for name, p in self.model.named_parameters():
-                if p.requires_grad:
-                    if p.dim() >= 2:
-                        galore_params.append(p)
-                    else:
-                        standard_params.append(p)
-            
-            self.optimizer = GaLoreOptimizer(
-                galore_params + standard_params,
-                lr=config.learning_rate,
-                rank=getattr(config, "rank", 128),
-                update_freq=getattr(config, "update_freq", 200),
-                cans_steps=getattr(config, "cans_steps", 5),
-            )
-        
-        else:  # adamw or default
-            # Standard AdamW optimizer
-            self.optimizer = AdamW(
-                self.model.parameters(),
-                lr=config.learning_rate,
-                weight_decay=getattr(config, 'weight_decay', 0.01)
-            )
-            print(f"  Optimizer: AdamW (lr={config.learning_rate})")
-        
+        self.optimizer = Optimizer(
+            galore_params + standard_params,
+            lr=config.learning_rate,
+            rank=getattr(config, "rank", 128),
+            update_freq=getattr(config, "update_freq", 200),
+            cans_steps=getattr(config, "cans_steps", 5),
+        )
+        print(f"  Optimizer: Custom (rank={getattr(config, 'rank', 128)})")
+
         # Setup mixed precision
         if self.use_mixed_precision:
             # Modern GradScaler API
@@ -199,14 +175,14 @@ class Trainer:
         # Training state
         self.global_step = 0
         self.best_val_loss = float("inf")
-        
+
         # Memory and throughput tracking
         self.start_time = None
         self.total_tokens = 0
         self.memory_stats = {
-            'peak_memory_mb': 0,
-            'current_memory_mb': 0,
-            'tokens_per_sec': 0
+            "peak_memory_mb": 0,
+            "current_memory_mb": 0,
+            "tokens_per_sec": 0,
         }
 
         # Create checkpoint directory
@@ -217,29 +193,33 @@ class Trainer:
 
         # Print optimization summary
         self._print_optimization_summary()
-    
+
     def _log_memory_and_throughput(self, num_tokens: int):
         """Log memory usage and throughput metrics"""
         if CUDA_AVAILABLE:
             # GPU memory tracking
             current_memory = torch.cuda.memory_allocated() / 1e6  # MB
             peak_memory = torch.cuda.max_memory_allocated() / 1e6  # MB
-            
-            self.memory_stats['current_memory_mb'] = current_memory
-            self.memory_stats['peak_memory_mb'] = max(peak_memory, self.memory_stats['peak_memory_mb'])
+
+            self.memory_stats["current_memory_mb"] = current_memory
+            self.memory_stats["peak_memory_mb"] = max(
+                peak_memory, self.memory_stats["peak_memory_mb"]
+            )
         elif PSUTIL_AVAILABLE:
-            # CPU memory tracking (approximate)
-            import psutil
             process = psutil.Process()
             current_memory = process.memory_info().rss / 1e6  # MB
-            self.memory_stats['current_memory_mb'] = current_memory
-            self.memory_stats['peak_memory_mb'] = max(current_memory, self.memory_stats['peak_memory_mb'])
-        
+            self.memory_stats["current_memory_mb"] = current_memory
+            self.memory_stats["peak_memory_mb"] = max(
+                current_memory, self.memory_stats["peak_memory_mb"]
+            )
+
         # Throughput tracking
         if self.start_time is not None:
             elapsed_time = time.time() - self.start_time
             self.total_tokens += num_tokens
-            self.memory_stats['tokens_per_sec'] = self.total_tokens / elapsed_time if elapsed_time > 0 else 0
+            self.memory_stats["tokens_per_sec"] = (
+                self.total_tokens / elapsed_time if elapsed_time > 0 else 0
+            )
 
     def _print_optimization_summary(self):
         """Print summary of enabled optimizations"""
@@ -271,9 +251,12 @@ class Trainer:
     def build_memory_from_batch(self, source_tokens, target_tokens, loss):
         """Build FAISS memory from training batch"""
         # Check if memory bank is available
-        if not hasattr(self.model.predictor, 'memory_bank') or self.model.predictor.memory_bank is None:
+        if (
+            not hasattr(self.model.predictor, "memory_bank")
+            or self.model.predictor.memory_bank is None
+        ):
             return
-        
+
         # Only build memory occasionally to avoid overhead
         # For small datasets, we want to build frequently
         if self.memory_build_steps % 1 != 0:
@@ -282,7 +265,6 @@ class Trainer:
         # Encode source and target to get embeddings
         with torch.no_grad():
             source_emb = self.model.encode_source(source_tokens)
-            target_emb = self.model.encode_target(target_tokens)
 
             # Mean pool source embeddings for memory
             source_pooled = source_emb.mean(dim=1)  # [batch, hidden_dim]
@@ -307,7 +289,7 @@ class Trainer:
         self.model.train()
         total_loss = 0.0
         num_batches = 0
-        
+
         # Start timing for throughput
         if self.start_time is None:
             self.start_time = time.time()
@@ -329,7 +311,7 @@ class Trainer:
             if self.use_mixed_precision and self.scaler is not None:
                 # Mixed precision forward pass
                 with torch.autocast(device_type="cuda", dtype=self.autocast_dtype):
-                    loss, pred_emb, target_emb = self.model(
+                    loss, _, _ = self.model(
                         source_tokens=source_tokens,
                         query_tokens=query_tokens,
                         target_tokens=target_tokens,
@@ -376,7 +358,7 @@ class Trainer:
                 self.scaler.update()
             else:
                 # Standard precision forward pass (CPU or explicit disable)
-                loss, pred_emb, target_emb = self.model(
+                loss, _, _ = self.model(
                     source_tokens=source_tokens,
                     query_tokens=query_tokens,
                     target_tokens=target_tokens,
@@ -415,7 +397,7 @@ class Trainer:
             total_loss += loss.item()
             num_batches += 1
             self.global_step += 1
-            
+
             # Log memory and throughput
             num_tokens = source_tokens.numel()
             self._log_memory_and_throughput(num_tokens)
@@ -522,26 +504,28 @@ class Trainer:
             ),
         }
         torch.save(checkpoint, checkpoint_path)
-        
+
         # Save Titans Memory if using enhanced architecture
-        if hasattr(self.model, 'save_titans_memory'):
-            titans_path = checkpoint_path.replace('.pt', '_titans.pt')
+        if hasattr(self.model, "save_titans_memory"):
+            titans_path = checkpoint_path.replace(".pt", "_titans.pt")
             self.model.save_titans_memory(titans_path)
 
     def load_checkpoint(self, checkpoint_path: str):
         """Load model checkpoint with backward compatibility"""
         checkpoint = torch.load(checkpoint_path, map_location=self.device)
-        
+
         # Use backward-compatible loading
-        self.model.load_state_dict_with_compatibility(checkpoint["model_state_dict"], strict=False)
-        
+        self.model.load_state_dict_with_compatibility(
+            checkpoint["model_state_dict"], strict=False
+        )
+
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
         self.global_step = checkpoint["global_step"]
         self.best_val_loss = checkpoint["best_val_loss"]
         print(f"Loaded checkpoint from {checkpoint_path}")
-        
+
         # Load Titans Memory if available
-        titans_path = checkpoint_path.replace('.pt', '_titans.pt')
-        if os.path.exists(titans_path) and hasattr(self.model, 'load_titans_memory'):
+        titans_path = checkpoint_path.replace(".pt", "_titans.pt")
+        if os.path.exists(titans_path) and hasattr(self.model, "load_titans_memory"):
             self.model.load_titans_memory(titans_path)
