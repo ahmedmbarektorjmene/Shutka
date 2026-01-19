@@ -5,6 +5,7 @@ Shutka is an **Ultra-Efficient Text-JEPA** (Joint Embedding Predictive Architect
 ## 🚀 Key Features
 
 ### Core Architecture
+
 - **Text-JEPA Paradigm**: Non-autoregressive representation learning with predictive embeddings
 - **BitNet 1.58 Quantization**: Ternary weights {-1, 0, 1} for 8-16x memory reduction and 2-3x CPU speedup
 - **Lightning Attention 2**: O(N) complexity tiled linear attention with intra/inter block processing
@@ -12,6 +13,7 @@ Shutka is an **Ultra-Efficient Text-JEPA** (Joint Embedding Predictive Architect
 - **FAISS RAG**: Dynamic memory bank with mutable knowledge injection
 
 ### Enhanced Architecture (CPU-Optimized)
+
 - **Titans Memory**: Test-time learnable memory with surprise-based updates
   - 10,000 memory slots with MLP-based storage
   - Surprise threshold: 0.5 for efficient updates
@@ -29,6 +31,7 @@ Shutka is an **Ultra-Efficient Text-JEPA** (Joint Embedding Predictive Architect
   - Tiled processing (Lightning Attention 2)
 
 ### Dynamic Optimization
+
 - **EAU (Evaluator Adjuster Unit)**: Dynamic complexity assessment
 - **Gated Residuals**: Learned information flow control
 - **Block Skipping**: Skip computation on simple inputs (CPU efficiency)
@@ -36,6 +39,7 @@ Shutka is an **Ultra-Efficient Text-JEPA** (Joint Embedding Predictive Architect
 - **Memory as Layer (MAL)**: Memory-augmented MLP replacement
 
 ### Training Optimizations
+
 - **Gradient Checkpointing**: 30-50% memory reduction during training
 - **BitNet 1.58 Quantization**: 8-16x memory reduction, 2-3x CPU speedup
   - Ternary weights {-1, 0, 1}
@@ -100,11 +104,13 @@ model.forget_titans_memory(n=100)  # Forget least accessed
 ### 1. Installation
 
 **For CPU:**
+
 ```bash
 pip install faiss-cpu datasets tiktoken torch numpy tqdm hypercorn h2 huggingface_hub
 ```
 
 **For GPU:**
+
 ```bash
 pip install faiss-gpu datasets tiktoken torch numpy tqdm bitsandbytes fastapi hypercorn h2 huggingface_hub
 ```
@@ -118,6 +124,7 @@ python api_server.py
 ```
 
 **API Endpoints:**
+
 - `POST /v1/chat/completions` - Chat completions with streaming
 - `POST /v1/embeddings` - Generate embeddings
 - `POST /v1/memory` - Add to FAISS memory bank
@@ -126,6 +133,7 @@ python api_server.py
 - `POST /v1/titans/forget?n=100` - Forget least accessed memories
 
 **Project-Specific FAISS:**
+
 - `POST /v1/faiss/create_project?project_name=myproject`
 - `POST /v1/faiss/add_to_project?project_name=myproject`
 - `GET /v1/faiss/list_projects`
@@ -139,11 +147,13 @@ python api_server.py
 ### 4. Training
 
 **Phase 1: TypeScript Syntax Learning**
+
 ```bash
 python training/train_typescript.py --epochs 3 --batch_size 4
 ```
 
 **Phase 2: Instruction Following**
+
 ```bash
 python training/train_real_data.py --resume checkpoints/best_model.pt --epochs 10
 ```
@@ -191,19 +201,21 @@ config = TrainingConfig(
 ## 🔧 Hardware Compatibility
 
 **Minimum Requirements:**
+
 - CPU: Any modern x64 processor
 - RAM: 4GB (CPU mode), 8GB recommended
 - GPU: Optional, GTX 1050+ or any CUDA-capable GPU
 
-
 ## 📊 Performance Benchmarks
 
 **Model Sizes:**
+
 - **Fast Mode**: ~350M parameters (320d, 6+3+3 layers)
 - **Standard Mode**: ~1B parameters (768d, 12+6+6 layers)
 - **Large Mode**: ~3B parameters (1024d, 24+12+12 layers)
 
 **Key Optimizations:**
+
 - BitNet 1.58: 8-16x memory reduction
 - Lightning Attention 2: O(N) complexity
 - torch.compile: 2-3x inference speedup
@@ -227,29 +239,35 @@ Old parameters are automatically mapped. New components are randomly initialized
 This model is based on the following research papers:
 
 ### Core Architecture
+
 - [ELFATT: Efficient Linear Fast Attention for Vision Transformers](https://arxiv.org/html/2501.06098v4)
 - [DeBERTa: Decoding-Enhanced BERT with Disentangled Attention](https://arxiv.org/pdf/2006.03654)
 - [Dynamic Context Adaptation and Information Flow Control in Transformers: Introducing the Evaluator Adjuster Unit and Gated Residual Connections](https://arxiv.org/html/2405.13407v1)
 - [RoFormer: Enhanced Transformer with Rotary Position Embedding](https://arxiv.org/pdf/2104.09864)
 
 ### Memory and Retrieval Systems
+
 - [Titans: Learning to Memorize at Test Time](https://arxiv.org/html/2501.00663v1)
 - [Titans + MIRAS: Helping AI have long-term memory](https://research.google/blog/titans-miras-helping-ai-have-long-term-memory/)
 - [HopRAG: Multi-Hop Reasoning for Logic-Aware Retrieval-Augmented Generation](https://arxiv.org/html/2502.12442v2)
 
 ### Attention Mechanisms
+
 - [Lightning Attention-2: A Free Lunch for Handling Unlimited Sequence Lengths](https://arxiv.org/html/2506.13585v1)
 - [TransMLA: Multi-Head Latent Attention Is All You Need](https://arxiv.org/html/2502.07864v5)
 
 ### Training Optimizations
+
 - [GaLore: Memory-Efficient LLM Training by Gradient Low-Rank Projection](https://arxiv.org/html/2403.03507v2)
 - [Byte Latent Transformer: Patches Scale Better Than Tokens](https://arxiv.org/html/2412.09871v1)
 - [Accelerating Newton-Schulz Iteration for Orthogonalization via Chebyshev-type Polynomials](https://arxiv.org/html/2506.10935v1)
 
 ### Model Architecture Enhancements
+
 - [GM-Skip: Metric-Guided Transformer Block Skipping for Efficient Vision-Language Models](https://arxiv.org/html/2508.18227v1)
 - [DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models](https://arxiv.org/html/2402.03300v3) (for mHC - Manifold-Constrained Hyper-Connections)
 
 ### Foundation
+
 - [Text-JEPA: Joint Embedding Predictive Architecture](https://arxiv.org/abs/2301.08727)
 - [BitNet: Scaling 1-bit Transformers](https://arxiv.org/abs/2310.11453)

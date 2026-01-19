@@ -55,12 +55,19 @@ def parse_args():
 
     # Training
     parser.add_argument("--epochs", type=int, default=5)
-    parser.add_argument("--batch_size", type=int, default=8)
-    parser.add_argument("--learning_rate", type=float, default=2e-4)
+    parser.add_argument("--batch_size", type=int, default=2)
+    parser.add_argument("--gradient_accumulation_steps", type=int, default=16)
+    parser.add_argument("--learning_rate", type=float, default=3e-4)
 
     # Optimization
-    parser.add_argument("--no_compile", action="store_true")
+    parser.add_argument("--compile", action="store_true", default=False)
     parser.add_argument("--no_mixed_precision", action="store_true")
+
+    # DataLoader
+    parser.add_argument("--num_workers", type=int, default=2)
+    parser.add_argument(
+        "--buffer_size", type=int, default=None, help="Override code_samples size"
+    )
 
     # Checkpointing
     parser.add_argument("--checkpoint_dir", type=str, default="checkpoints")
@@ -71,6 +78,13 @@ def parse_args():
 
 def main():
     args = parse_args()
+
+    # Handle buffer_size override
+    if args.buffer_size is not None:
+        print(
+            f"Overriding code_samples ({args.code_samples}) with buffer_size ({args.buffer_size})"
+        )
+        args.code_samples = args.buffer_size
 
     print("=" * 60)
     print("SHUTKA TRAINING - REAL DATA ONLY")
@@ -185,10 +199,20 @@ def main():
         }
 
     train_loader = DataLoader(
-        train_ds, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn
+        train_ds,
+        batch_size=args.batch_size,
+        shuffle=True,
+        collate_fn=collate_fn,
+        num_workers=args.num_workers,
+        pin_memory=True,
     )
     val_loader = DataLoader(
-        val_ds, batch_size=args.batch_size, shuffle=False, collate_fn=collate_fn
+        val_ds,
+        batch_size=args.batch_size,
+        shuffle=False,
+        collate_fn=collate_fn,
+        num_workers=args.num_workers,
+        pin_memory=True,
     )
 
     # Create model (Shutka-v2 350M spec)
@@ -225,8 +249,9 @@ def main():
         train_loader=train_loader,
         val_loader=val_loader,
         config=config,
-        use_compile=not args.no_compile,
+        use_compile=args.compile,
         use_mixed_precision=not args.no_mixed_precision,
+        gradient_accumulation_steps=args.gradient_accumulation_steps,
     )
 
     if args.resume:
