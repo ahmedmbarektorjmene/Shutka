@@ -143,9 +143,7 @@ class CombinedRealDataset(IterableDataset):
         # Stream code patterns
         print("\n=== Streaming Code Patterns ===")
         code_ds = TypeScriptStreamingDataset(
-            languages=self.languages,
-            max_source_len=self.max_source_len,
-            max_target_len=self.max_target_len,
+            max_seq_len=self.max_source_len,
             max_samples=self.max_code_samples,
         )
 
