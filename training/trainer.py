@@ -251,7 +251,6 @@ class Trainer:
     def build_memory_from_batch(self, source_tokens, target_tokens, loss):
         """Build FAISS memory from training batch"""
         # Check if memory bank is available
-        # Check if memory bank is available
         if not hasattr(self.model, "predictor"):
             return
 

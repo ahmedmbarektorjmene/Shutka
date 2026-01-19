@@ -80,7 +80,10 @@ def parse_args():
         help="Accumulate gradients (effective batch = 4*4=16)",
     )
     parser.add_argument(
-        "--learning_rate", type=float, default=3e-4, help="Learning rate"
+        "--learning_rate",
+        type=float,
+        default=5e-5,
+        help="Learning rate (lower for stability)",
     )
     parser.add_argument(
         "--use_rag", action="store_true", default=False, help="Disable RAG for speed"
