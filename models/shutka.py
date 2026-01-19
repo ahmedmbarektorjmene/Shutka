@@ -291,83 +291,37 @@ class LightningAttention2(nn.Module):
         super().__init__()
         self.num_heads = num_heads
         self.head_dim = dim // num_heads
-        self.dim = dim
-        self.chunk_size = chunk_size
         self.scale = self.head_dim**-0.5
-        self.qkv = QuantizedLinear(dim, dim * 3)
-        self.proj = QuantizedLinear(dim, dim)
+
+        self.qkv = QuantizedLinear(dim, dim * 3, bias=False)
+        self.proj = QuantizedLinear(dim, dim, bias=False)
         self.norm = RMSNorm(dim)
 
     def forward(self, x, cos=None, sin=None, mask=None):
         B, N, C = x.shape
-        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, self.head_dim)
+        # QKV
+        qkv = self.qkv(x)
+        qkv = qkv.reshape(B, N, 3, self.num_heads, self.head_dim)
         q, k, v = qkv.unbind(2)
 
+        # RoPE
         if cos is not None and sin is not None:
             q = apply_rope(q, cos, sin)
             k = apply_rope(k, cos, sin)
 
-        pad_len = (self.chunk_size - (N % self.chunk_size)) % self.chunk_size
-        if pad_len > 0:
-            padding = torch.zeros(
-                B,
-                pad_len,
-                self.num_heads,
-                self.head_dim,
-                device=x.device,
-                dtype=x.dtype,
-            )
-            q = torch.cat([q, padding], dim=1)
-            k = torch.cat([k, padding], dim=1)
-            v = torch.cat([v, padding], dim=1)
+        # Transpose for SDPA: (B, H, N, D)
+        q = q.transpose(1, 2)
+        k = k.transpose(1, 2)
+        v = v.transpose(1, 2)
 
-        N_padded = q.shape[1]
-        num_chunks = N_padded // self.chunk_size
-
-        q = q.view(B, num_chunks, self.chunk_size, self.num_heads, self.head_dim)
-        k = k.view(B, num_chunks, self.chunk_size, self.num_heads, self.head_dim)
-        v = v.view(B, num_chunks, self.chunk_size, self.num_heads, self.head_dim)
-
-        kv_state = torch.zeros(
-            B,
-            self.num_heads,
-            self.head_dim,
-            self.head_dim,
-            device=x.device,
-            dtype=x.dtype,
-        )
-        causal_mask = torch.tril(
-            torch.ones(
-                self.chunk_size, self.chunk_size, device=x.device, dtype=torch.bool
-            )
+        # Flash Attention / SDPA (Automatically selects efficient kernel on T4)
+        # is_causal=True handles the masking automatically and efficiently
+        out = F.scaled_dot_product_attention(
+            q, k, v, attn_mask=None, dropout_p=0.0, is_causal=True
         )
 
-        output_chunks = []
-
-        for t in range(num_chunks):
-            q_t = q[:, t].transpose(1, 2)
-            k_t = k[:, t].transpose(1, 2)
-            v_t = v[:, t].transpose(1, 2)
-
-            attn_scores = torch.einsum("bhqd,bhkd->bhqk", q_t, k_t) * self.scale
-            attn_scores = attn_scores.masked_fill(~causal_mask, float("-inf"))
-            attn_weights = torch.softmax(attn_scores, dim=-1)
-            o_intra = torch.einsum("bhqk,bhkd->bhqd", attn_weights, v_t)
-
-            o_inter = torch.einsum("bhqd,bhde->bhqe", q_t, kv_state)
-            o_t = o_intra + o_inter
-
-            kv_update = torch.einsum("bhkd,bhke->bhde", k_t, v_t)
-            kv_state = kv_state + kv_update
-
-            output_chunks.append(o_t.transpose(1, 2))
-
-        output = torch.cat(output_chunks, dim=1)
-        if pad_len > 0:
-            output = output[:, :N]
-
-        output = output.reshape(B, N, -1)
-        return self.proj(self.norm(output))
+        out = out.transpose(1, 2).reshape(B, N, C)
+        return self.proj(self.norm(out))
 
 
 class Transformer(nn.Module):
