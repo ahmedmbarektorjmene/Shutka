@@ -151,7 +151,8 @@ class Trainer:
         # Setup mixed precision
         if self.use_mixed_precision:
             # Modern GradScaler API
-            self.scaler = torch.amp.GradScaler("cuda")
+            # Start with lower scale to prevent "Step 0 NaN" on T4 FP16
+            self.scaler = torch.amp.GradScaler("cuda", init_scale=2048.0)
 
             # Optimized Dtype: Tesla T4 (Turing) supports FP16 much better than BF16.
             is_ampere_or_newer = (
