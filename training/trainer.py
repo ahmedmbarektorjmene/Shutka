@@ -527,9 +527,7 @@ class Trainer:
         checkpoint = torch.load(checkpoint_path, map_location=self.device)
 
         # Use backward-compatible loading
-        self.model.load_state_dict_with_compatibility(
-            checkpoint["model_state_dict"], strict=False
-        )
+        self.model.load_state_dict(checkpoint["model_state_dict"], strict=False)
 
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
