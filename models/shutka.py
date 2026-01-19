@@ -466,6 +466,7 @@ class UltraEfficientTextJEPA(nn.Module):
     def forward(
         self,
         source_tokens: torch.Tensor,
+        target_tokens: Optional[torch.Tensor] = None,
         hash_ngrams: Optional[torch.Tensor] = None,
         return_embeddings: bool = False,
         **kwargs,
@@ -488,7 +489,21 @@ class UltraEfficientTextJEPA(nn.Module):
         if return_embeddings:
             return x
 
-        return self.lm_head(x)
+        logits = self.lm_head(x)
+
+        if target_tokens is not None:
+            # Shift so that tokens < n predict n
+            shift_logits = logits[..., :-1, :].contiguous()
+            shift_labels = target_tokens[..., 1:].contiguous()
+
+            loss = F.cross_entropy(
+                shift_logits.view(-1, self.vocab_size), shift_labels.view(-1)
+            )
+
+            # Return tuple to satisfy Trainer unpacking (loss, _, _)
+            return loss, logits, None
+
+        return logits
 
     def predict_next(self, x, hash_ngrams=None):
         return self.forward(x, hash_ngrams)
