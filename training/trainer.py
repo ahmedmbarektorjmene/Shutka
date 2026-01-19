@@ -429,10 +429,6 @@ class Trainer:
                 }
             )
 
-            # Save checkpoint periodically
-            if self.global_step % self.config.save_every == 0:
-                self.save_checkpoint(f"checkpoint_step_{self.global_step}.pt")
-
             # Evaluate periodically
             if self.global_step % self.config.eval_every == 0:
                 val_loss = self.validate()
@@ -488,9 +484,6 @@ class Trainer:
             print(f"  Peak Memory: {self.memory_stats['peak_memory_mb']:.0f}MB")
             print(f"  Throughput: {self.memory_stats['tokens_per_sec']:.0f} tokens/sec")
 
-            # Save last checkpoint (overwrites previous to save disk space)
-            self.save_checkpoint("checkpoint_last.pt")
-
             # Save best model
             if val_loss < self.best_val_loss:
                 self.best_val_loss = val_loss
@@ -517,11 +510,6 @@ class Trainer:
         }
         torch.save(checkpoint, checkpoint_path)
 
-        # Save Titans Memory if using enhanced architecture
-        if hasattr(self.model, "save_titans_memory"):
-            titans_path = checkpoint_path.replace(".pt", "_titans.pt")
-            self.model.save_titans_memory(titans_path)
-
     def load_checkpoint(self, checkpoint_path: str):
         """Load model checkpoint with backward compatibility"""
         checkpoint = torch.load(checkpoint_path, map_location=self.device)
@@ -541,8 +529,3 @@ class Trainer:
         self.global_step = checkpoint["global_step"]
         self.best_val_loss = checkpoint["best_val_loss"]
         print(f"Loaded checkpoint from {checkpoint_path}")
-
-        # Load Titans Memory if available
-        titans_path = checkpoint_path.replace(".pt", "_titans.pt")
-        if os.path.exists(titans_path) and hasattr(self.model, "load_titans_memory"):
-            self.model.load_titans_memory(titans_path)
