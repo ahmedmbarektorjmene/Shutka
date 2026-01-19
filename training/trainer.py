@@ -186,6 +186,15 @@ class Trainer:
         }
 
         # Create checkpoint directory
+        # Sanitize input: if user passed a file path (e.g., best_model.pt), extract dir
+        if config.checkpoint_dir.endswith(".pt"):
+            print(
+                f"Warning: checkpoint_dir '{config.checkpoint_dir}' looks like a file. Using parent directory."
+            )
+            config.checkpoint_dir = os.path.dirname(config.checkpoint_dir)
+            if not config.checkpoint_dir:
+                config.checkpoint_dir = "."
+
         os.makedirs(config.checkpoint_dir, exist_ok=True)
 
         # Initialize memory building counter
